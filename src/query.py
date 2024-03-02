@@ -1,12 +1,11 @@
-import openai
-
 from typing import Dict, List
+import openai
 
 SUBCLAIM_PROMPT = 'Please breakdown the following response to a prompt into a set of small, independent claims. Return each subclaim (with no other characters) on a new line. \n'
 
-MERGE_PROMPT = "You will get an instruction and a set of facts that are true. Construct an answer using ONLY the facts provided, and use ALL of the facts provided. If no facts are given, reply to the instruction incorporating the fact that you dont know enough to fully respond.\n"
+MERGE_PROMPT = "You will get an instruction and a set of facts that are true. Construct an answer using ONLY the facts provided, and use ALL of the facts provided. If no facts are given, reply and say that you don't know enough to respond.\n"
 
-ANNOTATION_PROMPT = 'You will get an instruction and a set of claims made in response to that instruction. Determine whether each claim is true, subjective, or false. Return only T for Factual, S for Subjective, and F for False with no other characters. Each returned determination should be on its own line.\n'
+ANNOTATION_PROMPT = 'You will get an instruction and a set of claims made in response to that instruction. Determine whether each claim is true, subjective, or false. Each returned determination should be {"claim_id": ID, "value": TRUTH_VALUE} and be on its own line with NO other characters. The truth value should be in quotes and it should be T for Factual, S for Subjective, and F for False.\n'
 
 FREQUENCY_PROMPT = 'You will get a list of claims and piece of text. For each claim, score whether the text supports, contradicts, or is unrelated to the claim. Directly return a jsonl, where each line is {"id":[CLAIM_ID], "score":[SCORE]}. Directly return the jsonl with no explanation or other formatting. For the [SCORE], return 1 for supports, -1 for contradicts, and 0 for unrelated.\n'
 
@@ -41,7 +40,7 @@ def generate_annotation_prompt(
     subclaims : List[str]
 ) -> str:
     final_output = ANNOTATION_PROMPT + f"The original instruction was: {prompt}\n"
-    final_output += f"The claims are: {_concat_claims(subclaims)}"
+    final_output += f"The claims are: \n{_concat_claims(subclaims)}"
 
     return final_output
 
@@ -97,41 +96,3 @@ def query_llm(
         return outputs
     else:
         raise ValueError(f"Model {model} is not supported in query.")
-
-
-# def get_annotations(client, model, prompt, subclaims):
-#     claim_string = "\n".join(
-#         [str(i) + ": " + subclaim["subclaim"] for i, subclaim in enumerate(subclaims)]
-#     )
-#     message = ANNOTATION_PROMPT + f"The original prompt was: " + prompt + "\n The claims were: " + claim_string
-
-#     output = query_model(client, message, model)
-
-#     output = output.replace("```jsonl\n", "")
-#     output = output.replace("\\", "\\\\")
-#     output = output.replace("```", "")
-
-#     # Parse as jsonl.
-#     try:
-#         annotations = [json.loads(line) for line in output.splitlines() if line]
-#         return annotations
-#     except Exception as ex:
-#         print(ex)
-#         print("Failed to parse as jsonl")
-#         print(output)
-#         return None
-
-
-# def merge_subclaims(
-#     client, subclaims, model, prompt, create_merge_prompt=default_merge_prompt
-# ):
-#     """
-#     Takes in a list of sub-claims like [{'subclaim': 'Percy Liang is a computer scientist.', 'score': 5.0}, ...] and produces a merged output.
-#     """
-#     prompt = create_merge_prompt(subclaims, prompt)
-#     output = (
-#         query_model(client, prompt, model, max_tokens=1000, temperature=0)
-#         if subclaims
-#         else "Abstain."
-#     )
-#     return output

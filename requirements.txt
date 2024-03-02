@@ -1,0 +1,7 @@
+numpy
+scipy
+matplotlib
+openai
+tqdm
+toml
+munch
