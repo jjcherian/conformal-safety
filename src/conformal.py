@@ -37,3 +37,32 @@ def conformal_filter(
         ]
         unit['filtered_claims'] = filtered_claims
     return dataset
+
+
+def assess_factscore_coverage(
+    dataset : List,
+    nominal_alpha : float
+) -> None:
+    nonfactual_list = []
+    nonfactual_grps = {}
+    for d in dataset:
+        nonfactual = 'F' in [c['annotation'] for c in d['filtered_claims']]
+        nonfactual_list.append(nonfactual)
+
+        # right now metadata is only *two* strings...TODO this needs to be more flexible
+        if tuple(d['metadata']) not in nonfactual_grps:
+            nonfactual_grps[tuple(d['metadata'])] = [nonfactual]
+        else:
+            nonfactual_grps[tuple(d['metadata'])].append(nonfactual)
+        if d['metadata'][0] not in nonfactual_grps:
+            nonfactual_grps[d['metadata'][0]] = [nonfactual]
+        else:
+            nonfactual_grps[d['metadata'][0]].append(nonfactual)
+        if d['metadata'][1] not in nonfactual_grps:
+            nonfactual_grps[d['metadata'][1]] = [nonfactual]
+        else:
+            nonfactual_grps[d['metadata'][1]].append(nonfactual)
+    print(f"Nominal coverage: {nominal_alpha}")
+    print(f"Realized marginal coverage: {np.mean(nonfactual_list)}")
+    for grp, nonfactuals in nonfactual_grps.items():
+        print(f"Realized {grp} coverage: {np.mean(nonfactuals)}")

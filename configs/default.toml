@@ -26,4 +26,14 @@ temperature = 0
 n_samples = 1
 
 [conformal]
-alpha = 0.3
+alpha = 0.1
+
+[model.prob]
+name = "logistic"
+features = ["embedding"] # ["embedding", "frequency", "selfeval"]
+
+embedding.model = "text-embedding-3-small"
+embedding.n_dimensions = 8
+frequency.model.n_samples = 5
+frequency.model.name = "gpt-3.5-turbo"
+selfeval.model.name = "gpt-3.5-turbo"

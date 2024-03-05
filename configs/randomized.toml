@@ -1,0 +1,29 @@
+[dataset]
+name = "FActscore"
+train_percent = 0.0
+valid_percent = 0.2 
+# n = 10 # comment to use the whole dataset
+randomize = true
+seed = 0
+
+
+[model.parser]
+name = "gpt-3.5-turbo"
+max_tokens = 1000
+temperature = 0
+n_samples = 1
+
+[model.annotator]
+name = "gpt-4-0125-preview"
+max_tokens = 1000
+temperature = 0
+n_samples = 1
+
+[model.responder]
+name = "gpt-3.5-turbo"
+max_tokens = 1000
+temperature = 0
+n_samples = 1
+
+[conformal]
+alpha = 0.1

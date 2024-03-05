@@ -26,7 +26,7 @@ def get_prompts(
 def load_dataset(
     config : dict
 ) -> List:
-    cache_path = f"data/{config.dataset.name.lower()}_annotations.json"
+    cache_path = f"data/{config.dataset.name.lower()}_processed.json"
     if os.path.isfile(cache_path):
         with open(cache_path, 'r') as fp:
             dataset = json.load(fp)
@@ -47,7 +47,7 @@ def load_dataset(
             with open(response_path, 'w') as fp:
                 json.dump(outputs, fp)
 
-        print("Parsing and annotating responses.")
+        print("Parsing and annotating responses. Should change this to just subprocess factscorer.py because they did it much better than me.")
         dataset = parse_responses(
             outputs,
             parser_config=config.model.parser.name,

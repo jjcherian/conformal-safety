@@ -78,6 +78,15 @@ def query_gpt(
     )
     return completion
 
+def query_embedding(
+        client : openai.Client,
+        prompts : List[str],
+        model : str = "text-embedding-3-small",
+        **kwargs
+):
+    embed = client.embeddings.create(input = prompts, model = model, **kwargs).data[0].embedding
+    return embed
+
 def query_llm(
         prompts : List[str],
         model : str,
@@ -94,5 +103,10 @@ def query_llm(
             }
             outputs.append(output_dict)
         return outputs
+    elif 'embedding' in model:
+        client = openai.Client()
+        output = query_embedding(client, prompts, model, **kwargs)
+        return output
+
     else:
         raise ValueError(f"Model {model} is not supported in query.")
