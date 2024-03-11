@@ -1,11 +1,15 @@
 import numpy as np
 import json
 
+from functools import partial
+from tqdm.contrib.concurrent import process_map
 from tqdm import tqdm
 
 from query import query_llm
 
 SELF_ASSESS_PROMPT = "Given the original prompt, please evaluate the following set of small, independent claims, and return the output as a jsonl, where each line is {subclaim: CLAIM, gpt-score: CONF}.\n CLAIM should be a raw string (not a list containing a string) corresponding to ONE subclaim. The confidence score CONF should represent your estimated probabilty of correctness of the claim to three significant figures. The original prompt is: "
+
+MAX_WORKERS = 20
 
 def get_features(dataset, config):
     feature_names = config.features
@@ -15,6 +19,8 @@ def get_features(dataset, config):
         if feat == "embedding":
             embeds = np.zeros((num_claims, int(config.embedding.n_dimensions)))
             print("Fetching embeddings.")
+            embedding_func = partial(get_embedding, model=config.embedding.model, n_dim=config.embedding.n_dimensions)
+            res = process_map(embedding_func, [dat['claims'] for dat in dataset], max_workers=MAX_WORKERS)
             i = 0
             for dat in tqdm(dataset):
                 len_dat = len(dat['claims'])
@@ -25,6 +31,8 @@ def get_features(dataset, config):
         elif feat == "selfeval":
             print("Fetching selfevals.")
             evals = np.zeros((num_claims, 1))
+            selfeval_func = partial(get_self_eval, model=config.selfeval.model.name)
+            res = process_map(selfeval_func, dataset, max_workers=MAX_WORKERS)
             i = 0
             for dat in tqdm(dataset):
                 len_dat = len(dat['claims'])
@@ -53,15 +61,28 @@ def get_embedding(subclaims, model, n_dim=8):
         embeddings.append(embed[:n_dim])
     return np.asarray(embeddings)
 
-def get_self_eval(subclaims, prompt, model):
+def get_self_eval(dat, model):
+    subclaims, prompt = dat['claims'], dat['prompt']
     scores = []
     self_eval_prompt = SELF_ASSESS_PROMPT + prompt + "\n"
     for i, claim in enumerate(subclaims):
         msg = claim['message']
         self_eval_prompt = self_eval_prompt + f"Claim {i}: {msg}\n"
     output = query_llm([self_eval_prompt], model)[0]['message']
+    while len(output.splitlines()) != len(subclaims):
+        print("Error in text generation. Trying again.")
+        output = query_llm([self_eval_prompt], model)[0]['message']
+        if i > 10:
+            return np.asarray(-1 * np.ones((len(subclaims), 1)))
     for line in output.splitlines():
-        scores.append(json.loads(line)["gpt-score"])
+        try:
+            score = json.loads(line)["gpt-score"]
+            scores.append(score)
+        except Exception as ex:
+            print(ex)
+            print("Failed to parse as jsonl")
+            print(line)
+            scores.append(-1)
     return np.asarray(scores).reshape(-1,1)
 
 

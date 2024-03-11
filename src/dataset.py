@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 from typing import List, Tuple
 
@@ -5,6 +6,8 @@ import json
 import numpy as np
 import os
 
+from atomizer import Atomizer
+from gpt import GPTClient
 from query import query_llm
 from llm_utils import parse_responses
 
@@ -15,7 +18,7 @@ def get_prompts(
         with open('data/factscore_names.txt', 'r') as fp:
             names = fp.readlines()
         prompts = [
-            f"Please write one biographical paragraph about {name}."
+            f"Please write one biographical paragraph about {name.strip()}."
             for name in names
         ]
         return prompts
@@ -26,37 +29,65 @@ def get_prompts(
 def load_dataset(
     config : dict
 ) -> List:
-    cache_path = f"data/{config.dataset.name.lower()}_processed.json"
-    if os.path.isfile(cache_path):
-        with open(cache_path, 'r') as fp:
-            dataset = json.load(fp)
-    else:
-        response_path = f"data/{config.dataset.name.lower()}_responses.json"
-        if os.path.isfile(response_path):
-            with open(response_path, 'r') as fp:
-                outputs = json.load(fp)
-        else:
-            prompts = get_prompts(config.dataset.name)
-            outputs = []
-            print("Fetching (possibly invalid) responses.")
-            for p in tqdm(prompts):
-                output = query_llm([p], config.model.responder.name, n_samples=1)
-                outputs.append(output)
-            outputs = [{'prompt': p, 'response': o[0]['message']} 
-                         for p, o in zip(prompts, outputs)] # first output is the response we will filter
-            with open(response_path, 'w') as fp:
-                json.dump(outputs, fp)
+    
+    responder = GPTClient(f'.cache/{config.dataset.name}_responses.pkl')
 
-        print("Parsing and annotating responses. Should change this to just subprocess factscorer.py because they did it much better than me.")
-        dataset = parse_responses(
-            outputs,
-            parser_config=config.model.parser.name,
-            annotate=True,
-            annotator_config=config.model.annotator.name
+    prompts = get_prompts(config.dataset.name)
+
+    with ThreadPoolExecutor(max_workers=25) as executor:
+        responses = list(
+            tqdm(
+                executor.map(
+                    lambda x : responder.query(x),
+                    prompts
+                ),
+                total=len(prompts)
+            )
+        )
+    
+    responder.cache_outputs(
+        prompts,
+        np.zeros((len(responses),), dtype=int),
+        responses
+    )
+
+    responder.save_cache()
+
+    responses = [r[0] for r in responses]
+
+
+    outputs = [{'prompt': p, 'response': o['message']} 
+                    for p, o in zip(prompts, responses)] # first output is the response we will filter
+
+    atomizer_client = GPTClient(config.model.parser.cache_path, model=config.model.parser.name)
+
+    atomizer = Atomizer(atomizer_client, demo_dir='data/demos')
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        atoms = list(
+            tqdm(
+                executor.map(
+                    lambda x : atomizer.run(x),
+                    [o['response'] for o in outputs]
+                ),
+                total=len(outputs)
+            )
         )
 
-        with open(cache_path, 'w') as fp:
-            json.dump(dataset, fp)
+    atomizer.client.save_cache()
+    
+    import IPython; IPython.embed()
+
+    print("Parsing and annotating responses. Should change this to just subprocess factscorer.py because they did it much better than me.")
+    # dataset = parse_responses(
+    #     outputs,
+    #     parser_config=config.model.parser.name,
+    #     annotate=True,
+    #     annotator_config=config.model.annotator.name
+    # )
+
+    # with open(cache_path, 'w') as fp:
+    #     json.dump(dataset, fp)
     return dataset
 
 def split_dataset(

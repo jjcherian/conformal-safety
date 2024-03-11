@@ -2,35 +2,36 @@
 name = "FActscore"
 train_percent = 0.3
 valid_percent = 0.4 
-# n = 10 # comment to use the whole dataset
 randomize = false
 seed = 0
-
 
 [model.parser]
 name = "gpt-4-0125-preview"
 max_tokens = 1000
 temperature = 0
 n_samples = 1
+cache_path = '.cache/FActscore_parsed.pkl'
 
 [model.annotator]
 name = "gpt-4-0125-preview"
 max_tokens = 1000
 temperature = 0
 n_samples = 1
+cache_path = '.cache/FActscore_annotated.pkl'
 
 [model.responder]
 name = "gpt-3.5-turbo"
 max_tokens = 1000
 temperature = 0
 n_samples = 1
+cache_path = '.cache/FActscore_responses.pkl'
 
 [conformal]
 alpha = 0.1
 
 [model.prob]
 name = "logistic"
-features = ["embedding"] # ["embedding", "frequency", "selfeval"]
+features = ["selfeval"] # ["embedding", "frequency", "selfeval"]
 
 embedding.model = "text-embedding-3-small"
 embedding.n_dimensions = 8

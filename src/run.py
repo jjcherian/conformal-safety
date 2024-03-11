@@ -37,8 +37,6 @@ if __name__ == "__main__":
         rng=rng if config.dataset.randomize else None
     )
 
-    import IPython; IPython.embed()
-
     X_train = get_features(dataset_train, config.model.prob)
 
     y_train = np.concatenate([[c['annotation'] for c in dat['claims']] for dat in dataset_train])
@@ -46,10 +44,10 @@ if __name__ == "__main__":
     y_train[y_train == 'F'] = 0
     y_train = y_train.astype(np.int8)
 
-    model = fit_model(X_train, y_train, config.model.prob.name)
+    model = fit_model(X_train, y_train, config)
 
     X_valid = get_features(dataset_valid, config.model.prob)
-    y_valid = np.concatenate([[c['annotation'] for c in dat['claims']] for dat in dataset_train])
+    y_valid = np.concatenate([[c['annotation'] for c in dat['claims']] for dat in dataset_valid])
     y_valid[y_valid == 'T'] = 1
     y_valid[y_valid == 'F'] = 0
     y_valid = y_valid.astype(np.int8)
@@ -59,6 +57,13 @@ if __name__ == "__main__":
     scores_valid = np.array_split(scores_valid, splits_valid)
 
     X_test = get_features(dataset_test, config.model.prob)
+    y_test = np.concatenate([[c['annotation'] for c in dat['claims']] for dat in dataset_test])
+    y_test[y_test == 'T'] = 1
+    y_test[y_test == 'F'] = 0
+    y_test = y_test.astype(np.int8)
+
+    import IPython; IPython.embed()
+
     scores_test = model.predict_proba(X_test)[:,1]
     splits_test = np.cumsum([len(dat['claims']) for dat in dataset_test])[:-1]
     scores_test = np.array_split(scores_test, splits_test)
