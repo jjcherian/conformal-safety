@@ -13,11 +13,13 @@ n_samples = 1
 cache_path = '.cache/FActscore_parsed.pkl'
 
 [model.annotator]
-name = "gpt-4-0125-preview"
+name = "gpt-3.5-turbo"
 max_tokens = 1000
 temperature = 0
 n_samples = 1
-cache_path = '.cache/FActscore_annotated.pkl'
+cache_path = '.cache/FActscore_scored.pkl'
+data_path = 'data'
+retrieval_cache_path = '.cache'
 
 [model.responder]
 name = "gpt-3.5-turbo"
@@ -26,15 +28,23 @@ temperature = 0
 n_samples = 1
 cache_path = '.cache/FActscore_responses.pkl'
 
+[model.merger]
+name = "gpt-3.5-turbo"
+max_tokens = 1000
+temperature = 0
+n_samples = 1
+cache_path = '.cache/FActscore_merged.pkl'
+
 [conformal]
 alpha = 0.1
 
 [model.prob]
 name = "logistic"
-features = ["selfeval"] # ["embedding", "frequency", "selfeval"]
+features = ["selfeval", "frequency"]
 
 embedding.model = "text-embedding-3-small"
 embedding.n_dimensions = 8
+frequency.model.temperature = 1
 frequency.model.n_samples = 5
 frequency.model.name = "gpt-3.5-turbo"
 selfeval.model.name = "gpt-3.5-turbo"

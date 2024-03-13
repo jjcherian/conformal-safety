@@ -346,14 +346,3 @@ def fix_sentence_splitter(curr_sentences, initials):
             assert not combine_with_previous
             sentences.append(sent)
     return sentences
-
-
-def main():
-    generator = AtomicFactGenerator("api.key", "demos", gpt3_cache_dir=None)
-    atomic_facts, para_breaks = generator.run("Thierry Henry (born 17 August 1977) is a French professional football coach, pundit, and former player. He is considered one of the greatest strikers of all time, and one the greatest players of the Premier League history. He has been named Arsenal F.C's greatest ever player.\n\nHenry made his professional debut with Monaco in 1994 before signing for defending Serie A champions Juventus. However, limited playing time, coupled with disagreements with the club's hierarchy, led to him signing for Premier League club Arsenal for £11 million in 1999.")
-
-    print(atomic_facts)
-    print(para_breaks)
-
-if __name__ == "__main__":
-    main()

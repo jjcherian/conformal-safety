@@ -1,10 +1,14 @@
 import argparse
+import numpy as np
 
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 
 from dataset import load_dataset
 from config import get_config
+
+from featurizer import get_frequency, get_self_eval
+from gpt import GPTClient
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -20,6 +24,45 @@ if __name__ == "__main__":
     config = get_config(args.config_path)
 
     dataset = load_dataset(config)
+
+    client = GPTClient(f'.cache/{config.dataset.name}_frequency.pkl')
+
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        frequencies = list(
+            tqdm(
+                executor.map(
+                    lambda x: get_frequency(client, [af['atom'] for af in x['atomic_facts']], x['prompt'], config.model.prob.frequency.model),
+                    dataset
+                ),
+                total=len(dataset)
+            )
+        )
+    client.save_cache()
+
+    eval_client = GPTClient(f'.cache/{config.dataset.name}_self_evals.pkl')
+
+    with ThreadPoolExecutor(max_workers=25) as executor:
+        self_evals = list(
+            tqdm(
+                executor.map(
+                    lambda x: get_self_eval(x['prompt'], [af['atom'] for af in x['atomic_facts']], eval_client),
+                    dataset
+                ),
+                total=len(dataset)
+            )
+        )
+    eval_client.save_cache()
+
+    features = np.concatenate(
+        [
+            np.concatenate(frequencies).reshape(-1,1),
+            np.concatenate(self_evals).reshape(-1,1)
+        ],
+        axis=1
+    )
+
+    import IPython; IPython.embed()
     
 
     

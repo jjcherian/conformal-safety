@@ -34,16 +34,16 @@ class Client:
 
         if self.model is None:
             self.load_model()
-        print("I didn't find a cached copy!")
+        # print("I didn't find a cached copy!")
         output = self._query(prompt, **kwargs)
 
         return output
     
     def cache_outputs(
             self,
-            prompts : str,
-            sample_indices : int,
-            outputs : Any
+            prompts : List[str],
+            sample_indices : List[int],
+            outputs : List[Any]
     ):
         for prompt, sample_idx, output in zip(prompts, sample_indices, outputs):
             prompt = prompt.strip()

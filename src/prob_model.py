@@ -9,11 +9,14 @@ import torch.optim as optim
 
 from typing import List
 
+from conformal import compute_conformity_scores
+
 def fit_model(
         features : np.ndarray,
         labels : np.ndarray, 
         config : dict,
-        dataset_train : List = None
+        dataset_train : List = None,
+        eval_dict : dict = None
 ):
     name = config.model.prob.name
     if name == "logistic":
@@ -26,20 +29,20 @@ def fit_model(
         # no data splitting for now when constructing conformal loss
         model = LogisticRegression(features.shape[1])
 
-        optimizer = optim.Adam(model.parameters())
+        optimizer = optim.Adam(model.parameters(), lr=1)
         x = torch.tensor(features, requires_grad=True, dtype=torch.float32)
 
-        for i in range(2000):
+        for i in range(500):
             optimizer.zero_grad()
             probs = model.forward(x)
 
             loss, avg_train = get_conformal_loss(probs, labels, dataset_train, config.conformal.alpha)
             if i % 100 == 0:
-                probs_valid = model.forward(torch.tensor(X_valid, dtype=torch.float32)).detach().numpy()
-                probs_split = np.array_split(probs_valid, splits_valid)
-                threshold = np.quantile(compute_conformity_scores(dataset_valid, probs_split), 1 - config.conformal.alpha)
-                probs_test = model.forward(torch.tensor(X_test, dtype=torch.float32)).detach().numpy()
-                probs_split = np.array_split(probs_test, splits_test)
+                probs_valid = model.forward(torch.tensor(eval_dict['X_valid'], dtype=torch.float32)).detach().numpy()
+                probs_split = np.array_split(probs_valid, eval_dict['splits_valid'])
+                threshold = np.quantile(compute_conformity_scores(eval_dict['dataset_valid'], probs_split), 1 - config.conformal.alpha)
+                probs_test = model.forward(torch.tensor(eval_dict['X_test'], dtype=torch.float32)).detach().numpy()
+                probs_split = np.array_split(probs_test, eval_dict['splits_test'])
                 avg = 0
                 for prob in probs_split:
                     avg_retain = np.mean(prob > threshold.item())
@@ -50,6 +53,7 @@ def fit_model(
 
             loss.backward()
             optimizer.step()
+        return model
 
     else:
         return ValueError(f"{name} not available.")
@@ -57,7 +61,7 @@ def fit_model(
 
 def get_conformal_loss(probs, labels, dataset_train, alpha):
     claim_splits = torch.tensor(
-            np.cumsum([len(dat['claims']) for dat in dataset_train])[:-1]
+            np.cumsum([len(dat['atomic_facts']) for dat in dataset_train])[:-1]
     )
 
     claim_probs = torch.tensor_split(probs, claim_splits)
@@ -78,9 +82,11 @@ def get_conformal_loss(probs, labels, dataset_train, alpha):
     avg = 0
     for idx, c_prob in enumerate(claim_probs):
         if idx in loss_indices:
-            loss += torch.sigmoid((1/(threshold - c_prob).mean()) * (threshold - c_prob)).mean()
+            loss += torch.sigmoid((threshold - c_prob)).mean()
             avg_retain = (c_prob > threshold).float().mean()
             avg += avg_retain
+    if np.isnan(loss.item()):
+        raise ValueError(claim_probs[0])
     return loss, avg / len(loss_indices)
     
 class LogisticRegression(nn.Module):
