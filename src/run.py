@@ -7,6 +7,7 @@ from dataset import load_dataset, split_dataset
 from featurizer import get_features
 from llm_utils import merge_claims
 from prob_model import fit_model
+from gpt import GPTClient
 
 
 def parse_args():
@@ -37,43 +38,40 @@ if __name__ == "__main__":
         rng=rng if config.dataset.randomize else None
     )
 
-    import IPython; IPython.embed()
+    X_train = get_features(dataset_train, config)
 
-    X_train = get_features(dataset_train, config.model.prob)
-
-    y_train = np.concatenate([[c['annotation'] for c in dat['claims']] for dat in dataset_train])
-    y_train[y_train == 'T'] = 1
-    y_train[y_train == 'F'] = 0
+    y_train = np.concatenate([[c['is_supported'] for c in dat['atomic_facts']] for dat in dataset_train])
+    y_train[y_train == True] = 1
+    y_train[y_train == False] = 0
     y_train = y_train.astype(np.int8)
 
-    model = fit_model(X_train, y_train, config.model.prob.name)
-
-    X_valid = get_features(dataset_valid, config.model.prob)
-    y_valid = np.concatenate([[c['annotation'] for c in dat['claims']] for dat in dataset_train])
-    y_valid[y_valid == 'T'] = 1
-    y_valid[y_valid == 'F'] = 0
+    X_valid = get_features(dataset_valid, config)
+    y_valid = np.concatenate([[c['is_supported'] for c in dat['atomic_facts']] for dat in dataset_valid])
+    y_valid[y_valid == True] = 1
+    y_valid[y_valid == False] = 0
     y_valid = y_valid.astype(np.int8)
+    splits_valid = np.cumsum([len(dat['atomic_facts']) for dat in dataset_valid])[:-1]
+
+    X_test = get_features(dataset_test, config)
+    y_test = np.concatenate([[c['is_supported'] for c in dat['atomic_facts']] for dat in dataset_test])
+    y_test[y_test == True] = 1
+    y_test[y_test == False] = 0
+    y_test = y_test.astype(np.int8)
+    splits_test = np.cumsum([len(dat['atomic_facts']) for dat in dataset_test])[:-1]
+
+    model = fit_model(X_train, y_train, config, dataset_train, 
+                      eval_dict={'X_valid': X_valid, 'X_test': X_test, 'dataset_valid': dataset_valid, 'splits_valid': splits_valid, 'splits_test': splits_test})
 
     scores_valid = model.predict_proba(X_valid)[:,1]
-    splits_valid = np.cumsum([len(dat['claims']) for dat in dataset_valid])[:-1]
     scores_valid = np.array_split(scores_valid, splits_valid)
 
-    X_test = get_features(dataset_test, config.model.prob)
     scores_test = model.predict_proba(X_test)[:,1]
-    splits_test = np.cumsum([len(dat['claims']) for dat in dataset_test])[:-1]
     scores_test = np.array_split(scores_test, splits_test)
     # identify features for scoring 
-    score_features_v = [np.zeros((len(u['claims']), 1)) for u in dataset_valid]
-    score_features_te = [np.zeros((len(u['claims']), 1)) for u in dataset_test]
+    score_features_v = [np.zeros((len(u['atomic_facts']), 1)) for u in dataset_valid]
+    score_features_te = [np.zeros((len(u['atomic_facts']), 1)) for u in dataset_test]
 
-    # fit scoring function using training set (or just take it from the model)
-    score_fn = lambda x: rng.uniform(size=len(x)) # TODO: dumb one for now.
-
-    # obtain min prob of each invalid claim in each 
-    scores_valid = [score_fn(feats) for feats in score_features_v]
     conf_scores_valid = compute_conformity_scores(dataset_valid, scores_valid)
-
-    scores_test = [score_fn(feats) for feats in score_features_te]
 
     # fit error probability function using training set (or just define it?)
     # we want to be more sure about correctness on more sensitive prompts
@@ -101,13 +99,19 @@ if __name__ == "__main__":
         assess_factscore_coverage(dataset_test, config.conformal.alpha)
         
     print("Merging filtered responses.")
-    dataset_test = merge_claims(
-        dataset_test,
-        config.model.parser.name
-    )
 
-    print(dataset_test[0]['response'] + "\n")
-    print(dataset_test[0]['filtered_response'])
+    merge_client = GPTClient(cache_file = config.model.merger.cache_path)
+    merged_responses = merge_claims(
+        dataset_test,
+        merge_client
+    )
+    merge_client.save_cache()
+
+    rand_idx = rng.integers(0, len(dataset_test))
+    print(dataset_test[rand_idx]['response']['message'] + "\n")
+    print(merged_responses[rand_idx])
+
+    import IPython; IPython.embed()
 
 
 

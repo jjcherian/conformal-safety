@@ -1,4 +1,7 @@
 import json
+import numpy as np
+
+from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 from typing import Dict, List
 
@@ -6,6 +9,11 @@ from query import (
     generate_subclaim_prompt, generate_annotation_prompt, 
     generate_merge_prompt, query_llm
 )
+
+import client
+
+MERGE_PROMPT = "You will get an instruction and a set of facts that are true. Construct an answer using ONLY the facts provided, and use ALL of the facts provided. If no facts are given, reply and say that you don't know enough to respond.\n"
+
 
 def parse_responses(
     outputs : List[Dict],
@@ -56,13 +64,48 @@ def add_annotations(
     return subclaims
 
 
+def _concat_claims(
+    subclaims : List[str]
+) -> str:
+    return "\n".join(
+        f"{i}: {subclaim}" for i, subclaim in enumerate(subclaims) 
+    )
+
+def _get_merged_output(
+    prompt : str,
+    subclaims : List[str],
+    client : client.Client
+) -> str:
+    final_prompt = MERGE_PROMPT + f"The original instruction was: {prompt}\n"
+
+    final_prompt += f"The facts are: {_concat_claims(subclaims)}"
+
+    output = client.query(final_prompt)
+
+    return (final_prompt, output), output[0]['message']
+
+
 def merge_claims(
     dataset : List,
-    parser_config : str
+    client : client.Client
 ) -> List:
-    for unit in tqdm(dataset):
-        prompt, claims = unit['prompt'], unit['filtered_claims']
-        merge_prompt = generate_merge_prompt(prompt, claims)
-        output = query_llm([merge_prompt], parser_config)[0]
-        unit['filtered_response'] = output['message']
-    return dataset
+    with ThreadPoolExecutor(max_workers=25) as executor:
+        responses = list(
+            tqdm(
+                executor.map(
+                    lambda x : _get_merged_output(x['prompt'], x['filtered_claims'], client),
+                    dataset
+                ),
+                total=len(dataset)
+            )
+        )
+
+    to_cache = [r[0] for r in responses]
+
+    client.cache_outputs(
+        [c[0] for c in to_cache],
+        np.zeros((len(to_cache),), dtype=int),
+        [c[1] for c in to_cache]
+    )
+
+    return [r[1] for r in responses]
