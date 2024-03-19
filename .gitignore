@@ -5,3 +5,4 @@
 *.db
 *.pkl
 *.ipynb_checkpoints*
+*tmp*
