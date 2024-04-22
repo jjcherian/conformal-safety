@@ -4,5 +4,7 @@
 .cache*
 *.db
 *.pkl
+*.pem
+*.csv
 *.ipynb_checkpoints*
 *tmp*

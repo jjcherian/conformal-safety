@@ -22,6 +22,15 @@ def get_prompts(
             for name in names
         ]
         return names, prompts
+    if dataset.lower() == "factscore_v3":
+        with open('data/factscore_v3_names.txt', 'r') as fp:
+            names = fp.readlines()
+        names = [name.strip() for name in names]
+        prompts = [
+            f"Please write one biographical paragraph about {name.strip()}."
+            for name in names
+        ]
+        return names, prompts
     else:
         raise ValueError("Unsupported data set.")
     
@@ -78,7 +87,7 @@ def load_dataset(
     
     atomic_facts = [[fact for _, facts in atom[0] for fact in facts]for atom in atoms]
     
-
+    
     # time to annotate responses using factscore code
 
     scorer_client = GPTClient(config.model.annotator.cache_path, model=config.model.annotator.name)

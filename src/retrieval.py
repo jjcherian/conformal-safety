@@ -99,6 +99,18 @@ class DocDB(object):
         """Fetch the raw text of the doc for 'doc_id'."""
         if title == "Francisco Urroz":
             title = "Francisco Urroz (footballer)"
+        if title == "Prince William":
+            title = "William, Prince of Wales"
+        if title == "Sir Charles Petrie":
+            title = "Sir Charles Petrie, 3rd Baronet"
+        if title == "François-Michel le Tellier":
+            title = "François-Michel le Tellier, Marquis de Louvois"
+        if title == "Karl Max":
+            title = "Karl Max, Prince Lichnowsky"
+        if title == "Burchard II":
+            title = "Burchard II, Duke of Swabia"
+        if title == "Jean-Baptiste Drouet":
+            title = "Jean-Baptiste Drouet (revolutionary)"
         cursor = self.connection.cursor()
         cursor.execute("SELECT text FROM documents WHERE title = ?", (title,))
         results = cursor.fetchall()
@@ -108,7 +120,12 @@ class DocDB(object):
             assert results is not None and len(results)==1, f"`topic` in your data ({title}) is likely to be not a valid title in the DB."
         except Exception: # if there are concurent processes, things can fail
             print (f"Retrieval error for {title}: Retry in 5sec...")
-            time.sleep(5)  
+            time.sleep(5)
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT text FROM documents WHERE title = ?", (title,))
+            results = cursor.fetchall()
+            results = [r for r in results]
+            cursor.close()
         results = [{"title": title, "text": para} for para in results[0][0].split(SPECIAL_SEPARATOR)]
         assert len(results)>0, f"`topic` in your data ({title}) is likely to be not a valid title in the DB."
         return results

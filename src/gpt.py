@@ -47,7 +47,7 @@ class GPTClient(Client):
         )
         self.tokens_used += completion.usage.total_tokens
         self.requests_made += 1
-        print(self.tokens_used, self.requests_made)
+        # print(self.tokens_used, self.requests_made)
         outputs = []
         for choice in completion.choices:
             output_dict = {
