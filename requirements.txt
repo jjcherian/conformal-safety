@@ -1,7 +1,12 @@
 numpy
 scipy
 matplotlib
+pandas
+nltk
+rank_bm25
 openai
+spacy
+tenacity
 tqdm
 toml
 munch

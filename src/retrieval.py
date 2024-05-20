@@ -17,9 +17,12 @@ class DocDB(object):
     Implements get_doc_text(doc_id).
     """
 
-    def __init__(self, db_path=None, data_path=None):
+    def __init__(self, db_path=None, data_path=None, cache_path=None):
         self.db_path = db_path
+        self.cache_file = cache_path
         self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
+
+        self.cache_dict = self.load_cache()
 
         cursor = self.connection.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -29,6 +32,37 @@ class DocDB(object):
             print (f"{self.db_path} is empty. start building DB from {data_path}...")
             self.build_db(self.db_path, data_path)
 
+    def load_cache(self, allow_retry=True):
+        if os.path.exists(self.cache_file):
+            while True:
+                try:
+                    with open(self.cache_file, "rb") as f:
+                        cache = pkl.load(f)
+                    break
+                except Exception: # if there are concurent processes, things can fail
+                    if not allow_retry:
+                        assert False
+                    print ("Pickle Error: Retry in 5sec...")
+                    time.sleep(5)  
+        elif 's3' in self.cache_file:
+            from aws_utils import s3_open
+            s3_path = self.cache_file.removeprefix('s3://')
+            bucket_name = s3_path.split('/')[0]
+            path_to_file = '/'.join(s3_path.split('/')[1:])
+            with s3_open(bucket_name, path_to_file) as fp:
+                cache = pkl.load(fp)
+        else:
+            cache = {}
+        return cache
+    
+    def save_cache(self):
+        # load the latest cache first, since if there were other processes running in parallel, cache might have been updated
+        for k, v in self.load_cache().items():
+            self.cache_dict[k] = v
+
+        with open(self.cache_file, "wb") as f:
+            pkl.dump(self.cache_dict, f)
+    
     def __enter__(self):
         return self
 
@@ -97,37 +131,36 @@ class DocDB(object):
 
     def get_text_from_title(self, title):
         """Fetch the raw text of the doc for 'doc_id'."""
-        if title == "Francisco Urroz":
-            title = "Francisco Urroz (footballer)"
-        if title == "Prince William":
-            title = "William, Prince of Wales"
-        if title == "Sir Charles Petrie":
-            title = "Sir Charles Petrie, 3rd Baronet"
-        if title == "François-Michel le Tellier":
-            title = "François-Michel le Tellier, Marquis de Louvois"
-        if title == "Karl Max":
-            title = "Karl Max, Prince Lichnowsky"
-        if title == "Burchard II":
-            title = "Burchard II, Duke of Swabia"
-        if title == "Jean-Baptiste Drouet":
-            title = "Jean-Baptiste Drouet (revolutionary)"
-        cursor = self.connection.cursor()
-        cursor.execute("SELECT text FROM documents WHERE title = ?", (title,))
-        results = cursor.fetchall()
-        results = [r for r in results]
-        cursor.close()
-        try:
-            assert results is not None and len(results)==1, f"`topic` in your data ({title}) is likely to be not a valid title in the DB."
-        except Exception: # if there are concurent processes, things can fail
-            print (f"Retrieval error for {title}: Retry in 5sec...")
-            time.sleep(5)
+        with open('data/wiki_corrections.txt') as fp:
+            all_names = fp.readlines()
+            all_names = [n.strip() for n in all_names]
+            name_converter = {names.split('=')[0]:names.split('=')[1] for names in all_names}
+        if title in name_converter:
+            title = name_converter[title]
+
+        if title in self.cache_dict:
+            results = self.cache_dict[title]
+        else:
+            print("I SHOULD NOT BE HERE.")
             cursor = self.connection.cursor()
             cursor.execute("SELECT text FROM documents WHERE title = ?", (title,))
             results = cursor.fetchall()
             results = [r for r in results]
             cursor.close()
-        results = [{"title": title, "text": para} for para in results[0][0].split(SPECIAL_SEPARATOR)]
-        assert len(results)>0, f"`topic` in your data ({title}) is likely to be not a valid title in the DB."
+            try:
+                assert results is not None and len(results)==1, f"`topic` in your data ({title}) is likely to be not a valid title in the DB."
+            except Exception: # if there are concurent processes, things can fail
+                print (f"Retrieval error for {title}: Retry in 5sec...")
+                # time.sleep(5)
+                cursor = self.connection.cursor()
+                cursor.execute("SELECT text FROM documents WHERE title = ?", (title,))
+                results = cursor.fetchall()
+                results = [r for r in results]
+                results = [['blah blah blah']]
+                cursor.close()
+            results = [{"title": title, "text": para} for para in results[0][0].split(SPECIAL_SEPARATOR)]
+            assert len(results)>0, f"`topic` in your data ({title}) is likely to be not a valid title in the DB."
+            self.cache_dict[title] = results
         return results
 
 class Retrieval(object):

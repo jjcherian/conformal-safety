@@ -268,13 +268,13 @@ def get_frequency(
             )
         )
 
-    to_cache = [s[0] for s in all_scores if s[0][0] is not None]
+    # to_cache = [s[0] for s in all_scores if s[0][0] is not None]
 
-    client.cache_outputs(
-        [c[0] for c in to_cache],
-        np.zeros((len(to_cache),), dtype=int),
-        [c[1] for c in to_cache]
-    )
+    # client.cache_outputs(
+    #     [c[0] for c in to_cache],
+    #     np.zeros((len(to_cache),), dtype=int),
+    #     [c[1] for c in to_cache]
+    # )
 
     # TODO: error handling if this is all empty?
     parsed_scores = np.mean([s[1] for s in all_scores if s[1] is not None], axis=0)

@@ -74,6 +74,13 @@ class Client:
                         assert False
                     print ("Pickle Error: Retry in 5sec...")
                     time.sleep(5)  
+        elif 's3' in self.cache_file:
+            from aws_utils import s3_open
+            s3_path = self.cache_file.removeprefix('s3://')
+            bucket_name = s3_path.split('/')[0]
+            path_to_file = '/'.join(s3_path.split('/')[1:])
+            with s3_open(bucket_name, path_to_file) as fp:
+                cache = pickle.load(fp)
         else:
             cache = {}
         return cache

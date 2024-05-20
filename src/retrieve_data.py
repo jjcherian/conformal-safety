@@ -25,20 +25,20 @@ if __name__ == "__main__":
 
     dataset = load_dataset(config)
 
-    client = GPTClient(f'.cache/{config.dataset.name}_frequency.pkl')
+    # client = GPTClient(f'.cache/{config.dataset.name}_frequency.pkl')
 
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        frequencies = list(
-            tqdm(
-                executor.map(
-                    lambda x: get_frequency(client, [af['atom'] for af in x['atomic_facts']], x['prompt'], config.model.prob.frequency.model),
-                    dataset
-                ),
-                total=len(dataset)
-            )
-        )
-    client.save_cache()
+    # with ThreadPoolExecutor(max_workers=8) as executor:
+    #     frequencies = list(
+    #         tqdm(
+    #             executor.map(
+    #                 lambda x: get_frequency(client, [af['atom'] for af in x['atomic_facts']], x['prompt'], config.model.prob.frequency.model),
+    #                 dataset
+    #             ),
+    #             total=len(dataset)
+    #         )
+    #     )
+    # client.save_cache()
 
     eval_client = GPTClient(f'.cache/{config.dataset.name}_self_evals.pkl')
 
@@ -54,13 +54,13 @@ if __name__ == "__main__":
         )
     eval_client.save_cache()
 
-    features = np.concatenate(
-        [
-            np.concatenate(frequencies).reshape(-1,1),
-            np.concatenate(self_evals).reshape(-1,1)
-        ],
-        axis=1
-    )
+    # features = np.concatenate(
+    #     [
+    #         np.concatenate(frequencies).reshape(-1,1),
+    #         np.concatenate(self_evals).reshape(-1,1)
+    #     ],
+    #     axis=1
+    # )
 
     import IPython; IPython.embed()
     

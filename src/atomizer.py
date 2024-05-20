@@ -65,7 +65,6 @@ class Atomizer(object):
             return atoms_or_estimate
         else:
             atoms = atoms_or_estimate
-
         atomic_facts_pairs = []
         for i, sent in enumerate(sentences):
             if not self.is_bio and ( \
