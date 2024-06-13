@@ -14,6 +14,8 @@ from typing import Dict, List, Tuple
 
 SELF_ASSESS_PROMPT = 'You will get a list of claims and the original prompt that motivated these claims. For each claim, assess the probability of correctness. Directly return a jsonl, where each line is {"id":[CLAIM_ID], "gpt-score":[SCORE]}. Directly return the jsonl with NO explanation or ANY other formatting. For the [SCORE], return the esimated probability of correctness to three significant figures.\n'
 
+SELF_BOOL_PROMPT = 'You will get a list of claims and the original prompt that motivated these claims. For each claim, assess the correctness. Directly return a jsonl, where each line is {"id":[CLAIM_ID], "gpt-bool":[BOOL]}. Directly return the jsonl with NO explanation or ANY other formatting. For the [BOOL], return "T" or "F" in quotes so that it is valid json.\n'
+
 MAX_WORKERS = 20
 
 def get_features(
@@ -183,6 +185,74 @@ def get_self_eval(
     if to_cache[0] is None:
         return -1 * np.ones((len(subclaims),)) # -1 prob is error
 
+    client.cache_outputs(
+        [to_cache[0]],
+        np.zeros((1,), dtype=int),
+        [to_cache[1]]
+    )
+
+    return all_evals[1]
+
+def _bool_self(
+        prompt : str,
+        subclaims : List,
+        client : client.Client,
+        err_msg : str = None
+) -> Tuple[Tuple[str, List], np.ndarray]:
+    claim_string = "\n".join(
+        [str(i) + ": " + fact for i, fact in enumerate(subclaims)]
+    )
+    self_eval_prompt = SELF_BOOL_PROMPT
+    self_eval_prompt += f"The original prompt is: {prompt}.\n"
+    self_eval_prompt += f"The claims are: {claim_string}.\n"
+
+    if err_msg is not None:
+        self_eval_prompt += "\n" + err_msg
+
+    self_evals = client.query(self_eval_prompt)
+    parsed_evals = self_evals[0]['message']
+    parsed_evals = parsed_evals.replace("```jsonl\n", "")
+    parsed_evals = parsed_evals.replace("```", "")
+    final_evals = ['T' for i in range(len(parsed_evals.splitlines()))]
+    try:
+        assert len(final_evals) == len(subclaims)
+    except AssertionError:
+        if err_msg is not None and 'exactly' in err_msg:
+            print(f"I'm giving up on {claim_string} and {parsed_evals}, since I already retried this.")
+            return (None, None), None
+        err_msg = f"IMPORTANT: This is a retry. Make sure you return exactly {len(subclaims)} lines of JSON."
+        print(err_msg)
+        return _bool_self(prompt, subclaims, client, err_msg=err_msg)
+    try:
+        for line in parsed_evals.splitlines():
+            eval = json.loads(line)
+            idx = int(eval["id"])
+            final_evals[idx] = eval["gpt-bool"]
+    except Exception as ex:
+        if err_msg is not None and 'requested' in err_msg:
+            print(f"I'm giving up on {claim_string} and {parsed_evals}, since I already retried this.")
+            return (None, None), None
+        err_msg = f"IMPORTANT: This is a retry. Make sure you return the lines in the requested JSON format with NO additional formatting."
+        print(err_msg)
+        return _bool_self(prompt, subclaims, client, err_msg=err_msg)
+    return (self_eval_prompt, self_evals), final_evals
+
+
+def get_bool_eval(
+        prompt : str, 
+        subclaims : List[str], 
+        client : client.Client
+) -> np.ndarray:
+    all_evals = _bool_self(
+        prompt,
+        subclaims,
+        client
+    )
+
+    to_cache = all_evals[0]
+
+    if to_cache[0] is None:
+        return -1 * np.ones((len(subclaims),)) # -1 prob is error
     client.cache_outputs(
         [to_cache[0]],
         np.zeros((1,), dtype=int),

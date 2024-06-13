@@ -1,3 +1,4 @@
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 from typing import List, Tuple
@@ -51,6 +52,42 @@ def get_prompts(
             for name in names
         ]
         return names, prompts
+
+    if dataset.lower() == "medlfqa":
+        datasets = {}
+
+        suffix = "_test_MedLFQA.jsonl"
+
+        dataset_dir = "/Users/cherian/Projects/OLAPH/MedLFQA"
+        for path in os.listdir(dataset_dir):
+            if "MedLFQA" not in path:
+                continue
+            dataset_name = path[:-len(suffix)]
+            with open(os.path.join(dataset_dir, path), 'r') as fp:
+                datasets[dataset_name] = [json.loads(line) for line in fp.readlines()]
+
+        prompts = []
+        for _, dataset in datasets.items():
+            prompts += [pt['Question'] for pt in dataset]
+        prompts = list(set(prompts))
+        return prompts, prompts
+    
+    if dataset.lower() == "medlfqav2":
+        datasets = {}
+
+        suffix = ".jsonl"
+
+        for filename in os.listdir(data_path):
+            dataset_name = filename[:-len(suffix)]
+            with open(os.path.join(data_path, filename), 'r') as fp:
+                datasets[dataset_name] = [json.loads(line) for line in fp.readlines()]
+
+        prompts = []
+        for _, dataset in datasets.items():
+            prompts += [pt['Question'] for pt in dataset]
+
+        return prompts, prompts
+
     else:
         raise ValueError("Unsupported data set.")
     
@@ -97,13 +134,13 @@ def load_dataset(
     
     # TODO: Uncomment me if I want to run fresh dataset...
 
-    # responder.cache_outputs(
-    #     prompts,
-    #     np.zeros((len(responses),), dtype=int),
-    #     responses
-    # )
+    responder.cache_outputs(
+        prompts,
+        np.zeros((len(responses),), dtype=int),
+        responses
+    )
 
-    # responder.save_cache()
+    responder.save_cache()
 
     responses = [r[0] for r in responses]
 
@@ -111,6 +148,7 @@ def load_dataset(
     outputs = [{'prompt': p, 'response': o['message']} 
                     for p, o in zip(prompts, responses)] # first output is the response we will filter
 
+    import IPython; IPython.embed()
     print("Loading atomizer.")
     atomizer_client = GPTClient(config.model.parser.cache_path, model=config.model.parser.name)
 
@@ -119,6 +157,8 @@ def load_dataset(
     CACHE_EXISTS = True
 
     if CACHE_EXISTS: # TODO: dumb hard-coded variable to side step the slow retrieval
+        ordered_messages = [r['message'] for r in responses]
+
         responder_cache = responder.cache_dict
         messages = []
         for val in responder_cache.values():
@@ -128,12 +168,19 @@ def load_dataset(
         idx_guess = 0
         atomic_facts = [[] for _ in range(len(messages))]
         atomic_facts_ph = [[] for _ in range(len(messages))]
+
+        sentences = defaultdict(int)
         for k in tqdm(atomizer_cache.keys()):
             atomized_msg = atomizer_cache[k][0]['message']
             atomized_facts = text_to_sentences(atomized_msg)
             sentence = k.split('\n')[-1].split('facts:')[-1].strip()[:-2]
-            cur_idx = find_unique_element(messages, lambda x: sentence in x, approx_index=idx_guess)
+            cur_idx = -1
+            sentences[sentence] += 1
+            # if the sentence has appeared more than once we need to find the appropriate match...
+            for i in range(sentences[sentence]):
+                cur_idx = find_unique_element(messages[cur_idx + 1:], lambda x: sentence in x, approx_index=idx_guess)
             if cur_idx is None: # TODO: TERRIBLE SPECIAL CASING that I looked at by hand...
+                raise ValueError()
                 if idx_guess in (4148, 4149, 4150):
                     cur_idx = 4149
                 elif cur_idx == 993:
@@ -142,14 +189,16 @@ def load_dataset(
                     continue
             idx_guess = cur_idx
             atomic_facts[cur_idx].extend(atomized_facts)
-        
-        ordered_messages = [r['message'] for r in responses]
+
         for af, msg in zip(atomic_facts, messages):
-            atomic_facts_ph[ordered_messages.index(msg)] = af
+            if len(af) == 0:
+                continue
+            new_idx = ordered_messages.index(msg)
+            atomic_facts_ph[new_idx] = af
         atomic_facts = atomic_facts_ph
         
     else:
-        with ThreadPoolExecutor(max_workers=25) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
             atoms = list(
                 tqdm(
                     executor.map(
@@ -172,32 +221,34 @@ def load_dataset(
         dataset.append(data_pt)
 
     # time to annotate responses using factscore code
-    # print("Loading annotator.")
-    # scorer_client = GPTClient(config.model.annotator.cache_path, model=config.model.annotator.name)
-    # scorer = Scorer(scorer_client, config, model_name="retrieval")
+    print("Loading annotator.")
+    scorer_client = GPTClient(config.model.annotator.cache_path, model=config.model.annotator.name)
+    scorer = Scorer(scorer_client, config, model_name="retrieval")
 
-    # scorer_inputs = [(topic, output['response'], fact) for topic, output, fact in zip(topics, outputs, atomic_facts)]
-    # with ThreadPoolExecutor(max_workers=4) as executor:
-    #     scores = list(
-    #         tqdm(
-    #             executor.map(
-    #                 lambda x : scorer.get_score(*x, knowledge_source='enwiki-20230401-shrunk'),
-    #                 scorer_inputs
-    #             ),
-    #             total=len(scorer_inputs)
-    #         )
-    #     )
+    scorer_inputs = [(topic, output['response'], fact) for topic, output, fact in zip(topics, outputs, atomic_facts)]
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        scores = list(
+            tqdm(
+                executor.map(
+                    lambda x : scorer.get_score(*x, knowledge_source='medlfqa'),
+                    scorer_inputs
+                ),
+                total=len(scorer_inputs)
+            )
+        )
     # scorer.save_cache()
 
-    # dataset = []
+    dataset = []
 
-    # for p, r, s in zip(prompts, responses, scores):
-    #     data_pt = {
-    #         'prompt': p,
-    #         'response': r,
-    #         'atomic_facts': s['decisions'][0]
-    #     }
-    #     dataset.append(data_pt)
+    for p, r, s in zip(prompts, responses, scores):
+        data_pt = {
+            'prompt': p,
+            'response': r,
+            'atomic_facts': s['decisions'][0]
+        }
+        dataset.append(data_pt)
+
+    import IPython; IPython.embed()
 
     return dataset
 

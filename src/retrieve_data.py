@@ -7,7 +7,7 @@ from tqdm import tqdm
 from dataset import load_dataset
 from config import get_config
 
-from featurizer import get_frequency, get_self_eval
+from featurizer import get_frequency, get_self_eval, get_bool_eval
 from gpt import GPTClient
 
 def parse_args():
@@ -40,19 +40,33 @@ if __name__ == "__main__":
     #     )
     # client.save_cache()
 
-    eval_client = GPTClient(f'.cache/{config.dataset.name}_self_evals.pkl')
+    # eval_client = GPTClient(f'.cache/{config.dataset.name}_self_evals.pkl')
 
-    with ThreadPoolExecutor(max_workers=25) as executor:
-        self_evals = list(
-            tqdm(
-                executor.map(
-                    lambda x: get_self_eval(x['prompt'], [af['atom'] for af in x['atomic_facts']], eval_client),
-                    dataset
-                ),
-                total=len(dataset)
-            )
-        )
-    eval_client.save_cache()
+    # with ThreadPoolExecutor(max_workers=25) as executor:
+    #     self_evals = list(
+    #         tqdm(
+    #             executor.map(
+    #                 lambda x: get_self_eval(x['prompt'], [af['atom'] for af in x['atomic_facts']], eval_client),
+    #                 dataset
+    #             ),
+    #             total=len(dataset)
+    #         )
+    #     )
+    # eval_client.save_cache()
+
+    # bool_client = GPTClient(f'.cache/{config.dataset.name}_bool_evals.pkl')
+
+    # with ThreadPoolExecutor(max_workers=25) as executor:
+    #     self_bools = list(
+    #         tqdm(
+    #             executor.map(
+    #                 lambda x: get_bool_eval(x['prompt'], [af['atom'] for af in x['atomic_facts']], bool_client),
+    #                 dataset
+    #             ),
+    #             total=len(dataset)
+    #         )
+    #     )
+    # bool_client.save_cache()
 
     # features = np.concatenate(
     #     [
